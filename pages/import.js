@@ -11,14 +11,19 @@ export default function Import() {
     setMsg("");
     const file = e.target.files[0];
     parseExcel(file, async (rows) => {
-      // Duplikatsjekk: hent alle orgnr fra Supabase
-      let { data: existingLeads } = await supabase.from("leads").select("orgnr");
-      let existingOrgs = new Set((existingLeads ?? []).map(l => l.orgnr));
+      // Hent eksisterende leads
+      let { data: existingLeads } = await supabase.from("leads").select("orgnr, firmanavn");
+      let existingOrgs = new Set((existingLeads ?? []).map(l => (l.orgnr || '').replace(/\s/g, '').toLowerCase()));
+      let existingFirmanavn = new Set((existingLeads ?? []).map(l => (l.firmanavn || '').replace(/\s/g, '').toLowerCase()));
 
-      // Filtrer ut rows som allerede finnes
-      const newRows = rows.filter(r => !existingOrgs.has(r["Org.nr"]));
+      // Filtrer ut rader som finnes fra før (enten orgnr ELLER firmanavn)
+      const newRows = rows.filter(row => {
+        const org = (row["Org.nr"] || '').replace(/\s/g, '').toLowerCase();
+        const firm = (row["Firmanavn"] || '').replace(/\s/g, '').toLowerCase();
+        return !existingOrgs.has(org) && !existingFirmanavn.has(firm);
+      });
 
-      // Map Excel-kolonner til db-felt
+      // Legg til nye rader
       for (const row of newRows) {
         await supabase.from("leads").insert([{
           dato: row["Dato"] || "",
