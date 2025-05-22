@@ -1,8 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
 body {
   font-family: Arial, sans-serif;
   background: #f4f4f4;
   color: #222;
 }
+
 main {
   background: #fff;
   border-radius: 12px;
@@ -19,3 +25,4 @@ table {
 th {
   background: #eee;
 }
+*/
