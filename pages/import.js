@@ -15,12 +15,14 @@ export default function Import() {
   const [msg, setMsg] = useState("");
   const [updated, setUpdated] = useState([]);
   const [inserted, setInserted] = useState([]);
+  const [errorRows, setErrorRows] = useState([]);
 
   async function handleFile(e) {
     setLoading(true);
     setMsg("");
     setUpdated([]);
     setInserted([]);
+    setErrorRows([]);
     const file = e.target.files[0];
 
     parseExcel(file, async (rows) => {
@@ -37,6 +39,7 @@ export default function Import() {
 
       const nyInsert = [];
       const nyUpdate = [];
+      const errors = [];
 
       for (const row of rows) {
         const org = row["Org.nr"] ? row["Org.nr"].replace(/\s/g, '').toLowerCase() : null;
@@ -64,7 +67,6 @@ export default function Import() {
           ppa_pris: Number(row["PPA pris"] ?? 0)
         };
 
-        // Hvis match finnes, oppdater kun tomme felter
         if (match) {
           const oppdatering = {};
           let needsUpdate = false;
@@ -78,20 +80,34 @@ export default function Import() {
             }
           }
           if (needsUpdate) {
-            // Oppdater kun feltene som manglet
-            await supabase.from("leads").update(oppdatering).eq('id', match.id);
-            nyUpdate.push({ firmanavn: match.firmanavn, orgnr: match.orgnr });
+            const { error: updateError } = await supabase.from("leads").update(oppdatering).eq('id', match.id);
+            if (updateError) {
+              console.error("Feil ved oppdatering:", updateError, oppdatering, match);
+              errors.push({ type: 'update', error: updateError.message, data: oppdatering, existing: match });
+            } else {
+              nyUpdate.push({ firmanavn: match.firmanavn, orgnr: match.orgnr });
+            }
           }
         } else {
-          // Ikke duplikat, legg til som ny rad
-          await supabase.from("leads").insert([nyData]);
-          nyInsert.push({ firmanavn: nyData.firmanavn, orgnr: nyData.orgnr });
+          nyInsert.push(nyData);
+        }
+      }
+
+      // Batch-insert for alle nye rader (raskere enn én og én)
+      if (nyInsert.length > 0) {
+        const { error: insertError } = await supabase.from("leads").insert(nyInsert);
+        if (insertError) {
+          console.error("Feil ved batch-import:", insertError);
+          // For batch insert, viser bare feilmelding, ikke enkelt-rader (kan lages mer avansert hvis ønskelig)
+          errors.push({ type: 'insert', error: insertError.message, data: nyInsert });
+        } else {
+          setInserted(nyInsert.map(n => ({ firmanavn: n.firmanavn, orgnr: n.orgnr })));
         }
       }
 
       setMsg(`Importert ${nyInsert.length} nye leads. Oppdaterte ${nyUpdate.length} eksisterende leads!`);
       setUpdated(nyUpdate);
-      setInserted(nyInsert);
+      setErrorRows(errors);
       setLoading(false);
     });
   }
@@ -120,6 +136,17 @@ export default function Import() {
               <li key={i}>{d.firmanavn} ({d.orgnr})</li>
             ))}
           </ul>
+        </div>
+      )}
+      {errorRows.length > 0 && (
+        <div style={{color: "red", marginTop: 16}}>
+          <b>Feil under import:</b>
+          <ul>
+            {errorRows.map((err, i) => (
+              <li key={i}>{err.type} – {err.error}</li>
+            ))}
+          </ul>
+          <p>Sjekk konsoll for mer info (F12 → Console).</p>
         </div>
       )}
     </main>
