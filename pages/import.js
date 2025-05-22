@@ -24,20 +24,44 @@ export default function Import() {
     parseExcel(file, async (rows) => {
       // Hent eksisterende leads fra Supabase
       let { data: existingLeads } = await supabase.from("leads").select("orgnr, firmanavn");
-      let existingOrgs = new Set((existingLeads ?? []).map(l => (l.orgnr || '').replace(/\s/g, '').toLowerCase()));
-      let existingFirmanavn = new Set((existingLeads ?? []).map(l => (l.firmanavn || '').replace(/\s/g, '').toLowerCase()));
+      let existingOrgs = new Set(
+        (existingLeads ?? [])
+          .filter(l => l.orgnr) // kun ikke-tomme org.nr
+          .map(l => l.orgnr.replace(/\s/g, '').toLowerCase())
+      );
+      let existingFirmanavn = new Set(
+        (existingLeads ?? [])
+          .filter(l => l.firmanavn) // kun ikke-tomme firmanavn
+          .map(l => l.firmanavn.replace(/\s/g, '').toLowerCase())
+      );
 
       const toInsert = [];
       const duplikater = [];
 
       for (const row of rows) {
-        const org = (row["Org.nr"] || '').replace(/\s/g, '').toLowerCase();
-        const firm = (row["Firmanavn"] || '').replace(/\s/g, '').toLowerCase();
+        const org = row["Org.nr"] ? row["Org.nr"].replace(/\s/g, '').toLowerCase() : null;
+        const firm = row["Firmanavn"] ? row["Firmanavn"].replace(/\s/g, '').toLowerCase() : null;
 
-        if (existingOrgs.has(org) || existingFirmanavn.has(firm)) {
+        // Ny logikk:
+        // Hvis begge finnes, sjekk om noen finnes fra før
+        // Hvis kun org finnes, sjekk org
+        // Hvis kun firmanavn finnes, sjekk firmanavn
+        // Hvis ingen finnes, ikke sjekk duplikat
+
+        let erDuplikat = false;
+        if (org && existingOrgs.has(org)) {
+          erDuplikat = true;
+        } else if (!org && firm && existingFirmanavn.has(firm)) {
+          erDuplikat = true;
+        } else if (org && firm && (existingOrgs.has(org) || existingFirmanavn.has(firm))) {
+          erDuplikat = true;
+        }
+
+        if (erDuplikat) {
           duplikater.push({ firmanavn: row["Firmanavn"], orgnr: row["Org.nr"] });
           continue; // Hopp over denne raden
         }
+
         toInsert.push({
           dato: typeof row["Dato"] === "number" ? excelDateToISO(row["Dato"]) : row["Dato"] || "",
           firmanavn: row["Firmanavn"] || "",
@@ -51,12 +75,12 @@ export default function Import() {
           ppa_pris: Number(row["PPA pris"] ?? 0)
         });
 
-        // Legg til i eksisterende for å hindre duplikater i samme fil
-        existingOrgs.add(org);
-        existingFirmanavn.add(firm);
+        // Oppdater settet med ny verdi hvis de finnes
+        if (org) existingOrgs.add(org);
+        if (firm) existingFirmanavn.add(firm);
       }
 
-      // Send alle nye rader til Supabase (én og én, kan optimaliseres senere)
+      // Send alle nye rader til Supabase (en og en, for enkelhet)
       for (const lead of toInsert) {
         await supabase.from("leads").insert([lead]);
       }
