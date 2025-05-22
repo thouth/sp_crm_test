@@ -1,0 +1,21 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #f4f4f4;
+  color: #222;
+}
+main {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+  margin: 32px auto;
+  max-width: 900px;
+  padding: 32px;
+}
+table {
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+th {
+  background: #eee;
+}
